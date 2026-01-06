@@ -1,8 +1,9 @@
 /*
-* Vencord, a Discord client mod
-* Copyright (c) 2025 Vendicated and contributors*
-* SPDX-License-Identifier: GPL-3.0-or-later
-*/
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
@@ -33,6 +34,11 @@ const settings = definePluginSettings({
         description: "Ignore empty messages",
         default: true,
     },
+    skipAttachments: {
+        type: OptionType.BOOLEAN,
+        description: "Skip messages with file attachments or GIFs",
+        default: true,
+    },
     customPatterns: {
         type: OptionType.STRING,
         description: "Don't modify messages containing these words (comma separated)",
@@ -51,7 +57,15 @@ export default definePlugin({
     onBeforeMessageSend(channelId: string, msg: any) {
         if (!msg?.content || typeof msg.content !== "string") return;
 
-        const { prefix, suffix, addSpace, excludeCommands, ignoreEmpty, customPatterns } = settings.store;
+        const {
+            prefix,
+            suffix,
+            addSpace,
+            excludeCommands,
+            ignoreEmpty,
+            skipAttachments,
+            customPatterns
+        } = settings.store;
 
         const trimmed = msg.content.trim();
 
@@ -59,11 +73,16 @@ export default definePlugin({
 
         if (excludeCommands && trimmed.startsWith("/")) return;
 
-        if (customPatterns.trim()) {
-            const patterns = customPatterns.split(',').map(p => p.trim().toLowerCase()).filter(p => p);
-            const lowerContent = trimmed.toLowerCase();
+        if (skipAttachments && this.hasAttachments(msg)) {
+            return;
+        }
 
-            if (patterns.some(pattern => lowerContent.includes(pattern))) {
+        if (customPatterns.trim()) {
+            const patterns = customPatterns.split(",")
+                .map(p => p.trim().toLowerCase())
+                .filter(p => p.length > 0);
+
+            if (patterns.some(pattern => trimmed.toLowerCase().includes(pattern))) {
                 return;
             }
         }
@@ -82,5 +101,31 @@ export default definePlugin({
         if (newContent !== msg.content) {
             msg.content = newContent;
         }
+    },
+
+    hasAttachments(msg: any): boolean {
+        if (msg.attachments?.length > 0) {
+            return true;
+        }
+
+        if (msg.stickerItems?.length > 0 || msg.stickers?.length > 0) {
+            return true;
+        }
+
+        if (msg.attachments?.some?.((a: any) =>
+            a.filename?.toLowerCase().endsWith(".gif") ||
+            a.content_type?.includes("image/gif")
+        )) {
+            return true;
+        }
+
+        if (msg.content?.match(/\.gif(\?|$)/i) ||
+            msg.content?.includes("tenor.com") ||
+            msg.content?.includes("giphy.com") ||
+            msg.content?.includes("media.giphy.com")) {
+            return true;
+        }
+
+        return false;
     }
 });
